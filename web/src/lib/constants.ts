@@ -79,13 +79,3 @@ const UNLIMITED_THRESHOLD_MS = 10 * 365 * 86_400_000
 export function isEffectivelyUnlimited(validUntilIso: string): boolean {
   return Date.parse(validUntilIso) - Date.now() > UNLIMITED_THRESHOLD_MS
 }
-
-// Auto-refresh: when enabled on a listing, the /mine page checks every
-// AUTOREFRESH_POLL_MS milliseconds and triggers a refresh once the share
-// URL is within AUTOREFRESH_TRIGGER_HOURS of expiring. Each refresh extends
-// the URL by AUTOREFRESH_RENEWAL_DAYS days. Note: this only runs while
-// /mine is open in the browser — there's no server-side schedule because
-// only the holder of the App Key can sign a refresh.
-export const AUTOREFRESH_RENEWAL_DAYS = 30
-export const AUTOREFRESH_TRIGGER_HOURS = 24
-export const AUTOREFRESH_POLL_MS = 5 * 60 * 1000

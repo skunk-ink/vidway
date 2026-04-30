@@ -1,7 +1,6 @@
 // Per-user theme preference. Persisted in localStorage keyed on a prefix
-// of the user's pubkey, like the auto-refresh feature, so the choice is
-// scoped to the current Vidway user without bleeding across users sharing
-// a browser.
+// of the user's pubkey, so the choice is scoped to the current Vidway
+// user without bleeding across users sharing a browser.
 //
 // Three modes:
 //   - 'light'  — force light
