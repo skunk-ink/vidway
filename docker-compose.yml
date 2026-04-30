@@ -1,42 +1,41 @@
 # docker compose up [-d] [--build]
 #
-# Two services:
+# Two services with unambiguous names:
 #
-#   api  → port 8787 on the host. Hono server, SQLite persisted to
-#          ./api/data/vidway.db on the host (bind mount).
-#   web  → port 8080 on the host. Static Vite bundle served by nginx.
+#   vidway-api  → Hono server on internal port 8787, also exposed
+#                 on host as ${API_PORT:-8787}.
+#   vidway-web  → nginx static bundle on internal port 80, also
+#                 exposed on host as ${WEB_PORT:-8080}.
 #
-# The browser loads the web app from http://localhost:8080 and talks to
-# the API at http://localhost:8787 directly — both are exposed on the
-# host. The API URL is baked into the web bundle at build time via the
-# VITE_VIDWAY_API_URL build-arg below.
+# Both join an external network named `caddy` so a Caddy container
+# in another compose project can reach them by service name. Create
+# the network once with:
 #
-# Override the public-facing API URL by setting it in the shell or in
-# a .env file next to this docker-compose.yml:
+#   docker network create caddy
 #
-#   VITE_VIDWAY_API_URL=https://api.example.com docker compose up --build
-#
-# The same value is used as the CORS origin for the API container so
-# the browser request from web's port goes through.
+# The browser loads the web app from whatever public URL Caddy
+# answers on, and talks to the API at VITE_VIDWAY_API_URL. Both
+# values come from .env.
 
 services:
-  api:
+  vidway-api:
     build:
       context: .
       dockerfile: api/Dockerfile
     container_name: vidway-api
+    # Host port is optional for direct/dev access. Caddy doesn't use
+    # it — it reaches the container as `vidway-api:8787` on the
+    # shared network.
     ports:
       - "${API_PORT:-8787}:8787"
     environment:
       NODE_ENV: production
       PORT: 8787
       DATABASE_PATH: /data/vidway.db
-      # The web container's host-exposed origin — what the browser
-      # uses to load the app. Override via env if you map the web
-      # service to a non-default port.
+      # Origin the browser uses to load the web app — must match
+      # what Caddy serves it on, including the scheme (https vs http).
       CORS_ORIGIN: ${WEB_PUBLIC_ORIGIN:-http://localhost:8080}
     volumes:
-      # Persist the SQLite database across container rebuilds.
       - ./api/data:/data
     restart: unless-stopped
     healthcheck:
@@ -46,19 +45,28 @@ services:
       retries: 3
       start_period: 10s
 
-  web:
+  vidway-web:
     build:
       context: .
       dockerfile: web/Dockerfile
       args:
-        # The API URL the browser will use. Baked into the JS bundle.
-        # Must match where the api service is reachable from the user's
-        # machine (NOT from inside the docker network).
+        # The API URL the browser will use. Baked into the JS bundle
+        # at build time. Must be the public URL the browser can hit,
+        # NOT a docker-internal hostname.
         VITE_VIDWAY_API_URL: ${VITE_VIDWAY_API_URL:-http://localhost:8787}
     container_name: vidway-web
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:
-      api:
+      vidway-api:
         condition: service_started
     restart: unless-stopped
+
+# Use a single shared network for everything, including any other
+# compose project (e.g. Caddy) that declares it as `external: true`.
+# This is what makes `vidway-api` and `vidway-web` resolvable from
+# inside Caddy's container via Docker's embedded DNS.
+networks:
+  default:
+    name: caddy
+    external: true

@@ -182,38 +182,29 @@ export async function prepareVideo(
     }
     callbacks?.onStageProgress?.('remux', 1)
 
-    // ----- Thumbnail: seek to 1s, take one frame, scale to 640 wide -----
-    // Thumbnail failures must NOT take down the whole upload. Even a hard
-    // WASM trap (e.g. seeking past the end of a very short clip) is caught
-    // here and a placeholder image is used instead.
+    // ----- Thumbnail + metadata via the browser's own decoder -----
+    // We extract the thumbnail with a hidden <video> + canvas instead of a
+    // second ffmpeg.exec call. Reasons:
+    //
+    //   1. ffmpeg.exec for a single-frame output produces no useful
+    //      progress events (no Duration to compare against), so the
+    //      progress bar appears stuck at 0% even when the operation is
+    //      genuinely running.
+    //   2. The browser's H.264 decoder is hardware-accelerated;
+    //      ffmpeg.wasm has to do everything in software in a worker.
+    //      For a one-frame extraction the difference is dramatic.
+    //   3. We were already creating a hidden <video> element to read
+    //      duration/dimensions out of the remuxed file. Adding the
+    //      canvas draw to that flow costs near zero.
+    //
+    // If anything goes wrong (canvas API unavailable, decoder rejects
+    // the frame, etc.) we fall back to the colored placeholder — same
+    // as before.
     activeStage = 'thumbnail'
     callbacks?.onStageProgress?.('thumbnail', 0)
-    let thumbnail: Blob
-    try {
-      const thumbCode = await ffmpeg.exec([
-        '-ss', '1',
-        '-i', inputName,
-        '-frames:v', '1',
-        '-vf', 'scale=640:-2',
-        '-q:v', '4', // JPEG quality (2-31, lower = better)
-        thumbName,
-      ])
-      if (thumbCode === 0) {
-        const thumbData = (await ffmpeg.readFile(thumbName)) as Uint8Array
-        thumbnail = new Blob([thumbData as BlobPart], { type: 'image/jpeg' })
-        console.log('[ffmpeg] ✓ exec(thumbnail)')
-      } else {
-        console.warn(`[ffmpeg] thumbnail exec returned ${thumbCode}, using placeholder`)
-        thumbnail = await fallbackThumbnail(file.name)
-      }
-    } catch (e) {
-      console.warn('[ffmpeg] thumbnail extraction trapped, using placeholder:', e)
-      thumbnail = await fallbackThumbnail(file.name)
-    }
-    callbacks?.onStageProgress?.('thumbnail', 1)
-    activeStage = null
 
-    // Read the remuxed MP4 out.
+    // Read the remuxed MP4 out first so we can hand the same Blob to
+    // the canvas extractor (saving a second pass through ffmpeg's FS).
     const fmp4Data = await step(
       'readFile(output)',
       async () => (await ffmpeg.readFile(outputName)) as Uint8Array,
@@ -221,18 +212,44 @@ export async function prepareVideo(
     const fmp4 = new Blob([fmp4Data as BlobPart], { type: 'video/mp4' })
     console.log('[ffmpeg] remuxed output size:', fmp4.size)
 
-    // Extract duration / dimensions from the remuxed output. The browser
-    // <video> element is the most reliable reader, and the result reflects
-    // exactly what the player will see during playback.
-    const meta = await step('readMetadata', () => readVideoMetadataFromBlob(fmp4))
-    console.log('[ffmpeg] metadata:', meta)
+    let thumbnail: Blob
+    let durationSec = 0
+    let width = 640
+    let height = 360
+    try {
+      const result = await step('canvas thumbnail + metadata', () =>
+        readMetadataAndExtractThumbnail(fmp4),
+      )
+      thumbnail = result.thumbnail
+      durationSec = result.durationSec
+      width = result.width
+      height = result.height
+    } catch (e) {
+      console.warn(
+        '[thumbnail] canvas extraction failed, falling back to placeholder:',
+        e,
+      )
+      thumbnail = await fallbackThumbnail(file.name)
+      // Still need duration / dimensions. Fall back to a metadata-only
+      // <video> read; if even that fails we ship reasonable defaults.
+      try {
+        const meta = await readVideoMetadataFromBlob(fmp4)
+        durationSec = meta.durationSec
+        width = meta.width
+        height = meta.height
+      } catch (metaErr) {
+        console.warn('[thumbnail] metadata fallback also failed:', metaErr)
+      }
+    }
+    callbacks?.onStageProgress?.('thumbnail', 1)
+    activeStage = null
 
     return {
       fmp4,
       thumbnail,
-      durationSec: meta.durationSec,
-      width: meta.width,
-      height: meta.height,
+      durationSec,
+      width,
+      height,
       mime: 'video/mp4',
     }
   } finally {
@@ -242,6 +259,109 @@ export async function prepareVideo(
     await ffmpeg.deleteFile(outputName).catch(() => {})
     await ffmpeg.deleteFile(thumbName).catch(() => {})
   }
+}
+
+// Loads the blob into a hidden <video>, seeks to ~1s, draws the resulting
+// frame to a canvas, and exports it as JPEG. Returns the thumbnail along
+// with duration/dimensions so callers don't need a second pass.
+async function readMetadataAndExtractThumbnail(blob: Blob): Promise<{
+  durationSec: number
+  width: number
+  height: number
+  thumbnail: Blob
+}> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const v = document.createElement('video')
+    // `auto` (vs `metadata`) so the browser actually fetches frame data.
+    // Required for canvas drawImage to produce a non-empty result.
+    v.preload = 'auto'
+    v.muted = true
+    // Some browsers refuse drawImage from a tainted video; same-origin
+    // blob URLs are fine but explicitly setting crossOrigin doesn't hurt.
+    v.crossOrigin = 'anonymous'
+    v.playsInline = true
+
+    let cleaned = false
+    const cleanup = (err?: Error) => {
+      if (cleaned) return
+      cleaned = true
+      try {
+        URL.revokeObjectURL(url)
+      } catch {
+        // ignore
+      }
+      if (err) reject(err)
+    }
+
+    // Time budget. If decoding stalls we want to fail to placeholder
+    // rather than hang the upload forever.
+    const timeoutHandle = setTimeout(
+      () => cleanup(new Error('canvas thumbnail timed out after 15s')),
+      15_000,
+    )
+
+    v.onloadedmetadata = () => {
+      // Seek to 1 second, or as close to the end as possible for very
+      // short clips. Subtracting a tiny epsilon avoids landing past EOF.
+      const target = Math.min(1, Math.max(0, (v.duration || 0) - 0.05))
+      try {
+        v.currentTime = target
+      } catch {
+        // Some browsers throw if duration is NaN/Infinity. Try 0.
+        v.currentTime = 0
+      }
+    }
+
+    v.onseeked = () => {
+      try {
+        const targetWidth = 640
+        const aspect =
+          v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 16 / 9
+        const canvas = document.createElement('canvas')
+        canvas.width = targetWidth
+        canvas.height = Math.max(1, Math.round(targetWidth / aspect))
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          clearTimeout(timeoutHandle)
+          cleanup(new Error('canvas 2d context unavailable'))
+          return
+        }
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+
+        canvas.toBlob(
+          (b) => {
+            clearTimeout(timeoutHandle)
+            if (!b) {
+              cleanup(new Error('canvas.toBlob returned null'))
+              return
+            }
+            const result = {
+              durationSec:
+                Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0,
+              width: v.videoWidth || 640,
+              height: v.videoHeight || 360,
+              thumbnail: b,
+            }
+            cleanup()
+            resolve(result)
+          },
+          'image/jpeg',
+          0.78,
+        )
+      } catch (e) {
+        clearTimeout(timeoutHandle)
+        cleanup(e instanceof Error ? e : new Error(String(e)))
+      }
+    }
+
+    v.onerror = () => {
+      clearTimeout(timeoutHandle)
+      cleanup(new Error('video element load error'))
+    }
+
+    v.src = url
+  })
 }
 
 async function readVideoMetadataFromBlob(
