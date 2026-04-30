@@ -2,6 +2,7 @@ import { Builder } from '@siafoundation/sia-storage'
 import { useState } from 'react'
 import { APP_META, INDEXER_URL } from '../../lib/constants'
 import { useAuthStore } from '../../stores/auth'
+import { Logo } from '../Logo'
 
 export function ConnectScreen({
   builder,
@@ -40,6 +41,7 @@ export function ConnectScreen({
     <div className="flex flex-col items-center justify-center flex-1 px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
+          <Logo className="h-9 w-9 mx-auto text-neutral-900 dark:text-neutral-100" />
           <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">Vidway</h1>
           <p className="text-neutral-600 dark:text-neutral-400 text-sm">
             Sign in with your Sia account to browse and upload videos.

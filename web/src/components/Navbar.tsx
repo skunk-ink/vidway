@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom'
 import { APP_NAME } from '../lib/constants'
 import { useAuthStore } from '../stores/auth'
 import { CopyButton } from './CopyButton'
+import { Logo } from './Logo'
 import { ThemeToggle } from './ThemeToggle'
 
 export function Navbar() {
@@ -27,7 +28,8 @@ export function Navbar() {
   return (
     <header className="border-b border-neutral-200/80 dark:border-neutral-800/80 bg-white/70 dark:bg-neutral-900/70 backdrop-blur sticky top-0 z-30">
       <div className="flex items-center justify-between px-6 py-3 max-w-6xl mx-auto gap-4">
-        <Link to="/" className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <Link to="/" className="flex items-center gap-2 text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+          <Logo className="h-5 w-5" />
           {APP_NAME}
         </Link>
 
