@@ -51,30 +51,36 @@ On first run, the API initializes a SQLite database at `api/data/vidway.db`.
 For a one-command production-like setup:
 
 ```bash
+cp .env.example .env       # adjust if you want non-default ports/URLs
 docker compose up --build
 # → web at  http://localhost:8080
 # → api at  http://localhost:8787
 ```
 
-Two services, two host ports. The browser loads the web app from `:8080` and talks to the API at `:8787` directly — both are exposed on the host. The API URL is baked into the web bundle at build time via a `VITE_VIDWAY_API_URL` build-arg, defaulting to `http://localhost:8787` for the canonical local-compose flow.
+`docker compose` reads `.env` from the project root automatically, so any of `VITE_VIDWAY_API_URL`, `WEB_PUBLIC_ORIGIN`, `WEB_PORT`, `API_PORT` you set there will flow into both the build args and the container env. No extra flags needed.
 
 The catalog SQLite file is bind-mounted to `./api/data/vidway.db` on the host, so it survives `docker compose down` and image rebuilds. Delete the file to wipe the catalog.
 
-To deploy somewhere with a real public URL, override the build-arg and the CORS origin:
+To deploy somewhere with a real public URL, just edit `.env`:
 
-```bash
-VITE_VIDWAY_API_URL=https://api.example.com \
-WEB_PUBLIC_ORIGIN=https://vidway.example.com \
-docker compose up --build -d
+```env
+VITE_VIDWAY_API_URL=https://api.example.com
+WEB_PUBLIC_ORIGIN=https://vidway.example.com
 ```
 
-Or pin the host ports if 8080 / 8787 collide with something else:
+Then `docker compose up --build -d`. Or pin the host ports if 8080 / 8787 collide with something else:
+
+```env
+WEB_PORT=3000
+API_PORT=4000
+VITE_VIDWAY_API_URL=http://localhost:4000
+WEB_PUBLIC_ORIGIN=http://localhost:3000
+```
+
+Shell env still wins if you'd rather override on the command line for a one-off:
 
 ```bash
-WEB_PORT=3000 API_PORT=4000 \
-VITE_VIDWAY_API_URL=http://localhost:4000 \
-WEB_PUBLIC_ORIGIN=http://localhost:3000 \
-docker compose up --build
+VITE_VIDWAY_API_URL=https://staging.example.com docker compose up --build
 ```
 
 ## Build status
