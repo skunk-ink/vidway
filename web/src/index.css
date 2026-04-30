@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+/* Class-strategy dark mode. The `dark:` prefix activates whenever an
+   ancestor (or the element itself) has the `.dark` class. We toggle that
+   class on <html> from the theme store. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Base palette swapped via CSS variables. Components that don't have an
+   explicit `dark:` variant (everything outside src/components/*) still
+   inherits the right body bg / text color through these. */
+:root {
+  --vw-bg: #fafaf9;
+  --vw-text: #1c1917;
+}
+
+.dark {
+  --vw-bg: #0c0a09;
+  --vw-text: #e7e5e4;
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--vw-bg);
+    color: var(--vw-text);
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 rounded-lg text-sm font-medium bg-neutral-900 hover:bg-neutral-800
+           disabled:bg-neutral-300 disabled:text-neutral-500 text-white transition-colors
+           dark:bg-neutral-100 dark:hover:bg-white dark:text-neutral-900
+           dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400;
+  }
+  .btn-secondary {
+    @apply px-4 py-2 rounded-lg text-sm font-medium border border-neutral-300 bg-white
+           hover:bg-neutral-50 disabled:bg-neutral-100 disabled:text-neutral-400 text-neutral-800
+           transition-colors dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-200
+           dark:hover:bg-neutral-800 dark:disabled:bg-neutral-900 dark:disabled:text-neutral-600;
+  }
+}

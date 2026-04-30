@@ -1,0 +1,64 @@
+# docker compose up [-d] [--build]
+#
+# Two services:
+#
+#   api  → port 8787 on the host. Hono server, SQLite persisted to
+#          ./api/data/vidway.db on the host (bind mount).
+#   web  → port 8080 on the host. Static Vite bundle served by nginx.
+#
+# The browser loads the web app from http://localhost:8080 and talks to
+# the API at http://localhost:8787 directly — both are exposed on the
+# host. The API URL is baked into the web bundle at build time via the
+# VITE_VIDWAY_API_URL build-arg below.
+#
+# Override the public-facing API URL by setting it in the shell or in
+# a .env file next to this docker-compose.yml:
+#
+#   VITE_VIDWAY_API_URL=https://api.example.com docker compose up --build
+#
+# The same value is used as the CORS origin for the API container so
+# the browser request from web's port goes through.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: vidway-api
+    ports:
+      - "${API_PORT:-8787}:8787"
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      DATABASE_PATH: /data/vidway.db
+      # The web container's host-exposed origin — what the browser
+      # uses to load the app. Override via env if you map the web
+      # service to a non-default port.
+      CORS_ORIGIN: ${WEB_PUBLIC_ORIGIN:-http://localhost:8080}
+    volumes:
+      # Persist the SQLite database across container rebuilds.
+      - ./api/data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8787/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        # The API URL the browser will use. Baked into the JS bundle.
+        # Must match where the api service is reachable from the user's
+        # machine (NOT from inside the docker network).
+        VITE_VIDWAY_API_URL: ${VITE_VIDWAY_API_URL:-http://localhost:8787}
+    container_name: vidway-web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped

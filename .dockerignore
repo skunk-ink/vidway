@@ -1,0 +1,45 @@
+# Workspace + tooling artifacts
+**/node_modules
+**/.vite
+**/dist
+**/.cache
+**/coverage
+**/*.tsbuildinfo
+
+# SQLite data — never copy into image; mount at runtime
+**/data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# Local env files (only the .example ones are useful in the image)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Source control + editor noise
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+.DS_Store
+
+# Logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+
+# Docker plumbing — not needed inside the image
+docker-compose.yml
+docker-compose.*.yml
+
+# Tarballs we generate while iterating
+*.tar.gz
+
+# README / spec — not needed at runtime
+README.md
+vidway-stack-overview.md

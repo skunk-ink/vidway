@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+.vite/
+.turbo/
+
+# API runtime
+api/data/
+api/*.db
+api/*.db-journal
+api/*.db-wal
+api/*.db-shm
+
+# Editor
+.vscode/
+.idea/
+*.swp

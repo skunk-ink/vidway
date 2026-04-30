@@ -1,0 +1,32 @@
+{
+  "name": "@vidway/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "build": "tsc",
+    "check": "biome check .",
+    "admin:list-flags": "tsx src/admin/list-flags.ts",
+    "admin:remove-listing": "tsx src/admin/remove-listing.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.5.0",
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.0",
+    "hono": "^4.6.0",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.0"
+  }
+}
