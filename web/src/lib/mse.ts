@@ -34,13 +34,21 @@ export class MseController {
   private fetching = false
   private destroyed = false
   private url: string | null = null
+  private video: HTMLVideoElement
+  private obj: PinnedObject
+  private sdk: Sdk
+  private onProgress?: (p: MseProgress) => void
 
   constructor(
-    private video: HTMLVideoElement,
-    private obj: PinnedObject,
-    private sdk: Sdk,
-    private onProgress?: (p: MseProgress) => void,
+    video: HTMLVideoElement,
+    obj: PinnedObject,
+    sdk: Sdk,
+    onProgress?: (p: MseProgress) => void,
   ) {
+    this.video = video
+    this.obj = obj
+    this.sdk = sdk
+    this.onProgress = onProgress
     this.totalSize = Number(obj.size())
     this.mediaSource = new MediaSource()
   }

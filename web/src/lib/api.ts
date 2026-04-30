@@ -53,12 +53,12 @@ export type UpdateListingInput = {
 }
 
 class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    msg: string,
-  ) {
+  readonly status: number
+  readonly code: string
+  constructor(status: number, code: string, msg: string) {
     super(msg)
+    this.status = status
+    this.code = code
   }
 }
 

@@ -95,7 +95,6 @@ export function Upload() {
         console.error(`[upload] ✗ ${name}:`, e)
         throw new Error(
           `${name} failed: ${e instanceof Error ? e.message : String(e)}`,
-          // @ts-expect-error -- Error.cause is widely supported, TS lib might lag
           { cause: e },
         )
       }
@@ -143,7 +142,7 @@ export function Upload() {
         sdk.upload(new PinnedObject(), prepared.fmp4.stream(), {
           dataShards: DATA_SHARDS,
           parityShards: PARITY_SHARDS,
-          onShardUploaded: (p) => {
+          onShardUploaded: (p: { shardSize: number }) => {
             setProgressBytes((prev) =>
               Math.min(sourceSize, prev + (p.shardSize / Number(totalEncoded)) * sourceSize),
             )

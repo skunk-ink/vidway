@@ -142,7 +142,6 @@ export async function prepareVideo(
       console.error(`[ffmpeg] ✗ ${name}:`, e)
       throw new Error(
         `ffmpeg ${name} failed: ${e instanceof Error ? e.message : String(e)}`,
-        // @ts-expect-error -- Error.cause is widely supported, TS lib might lag
         { cause: e },
       )
     }
