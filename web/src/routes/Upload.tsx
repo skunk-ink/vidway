@@ -42,12 +42,31 @@ export function Upload() {
   const [progressBytes, setProgressBytes] = useState(0)
   const [stageFraction, setStageFraction] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Per-shard progress for the upload stage. The bytes-based progress
+  // bar moves smoothly per shard, but on a slow connection a single
+  // 4 MiB shard can take 10+ seconds — the page looks frozen if we
+  // don't show counts and a "last update" indicator.
+  const [shardsDone, setShardsDone] = useState(0)
+  const [shardsTotal, setShardsTotal] = useState(0)
+  const [lastShardAt, setLastShardAt] = useState<number | null>(null)
+  // Tick once a second while uploading so the "X seconds since last
+  // shard" indicator actually advances.
+  const [, setUploadTick] = useState(0)
 
   // Start fetching the ffmpeg WASM as soon as a file is picked. Loading
   // happens while the user fills out title/description/expiry.
   useEffect(() => {
     if (file) preloadFFmpeg()
   }, [file])
+
+  // Re-render once a second during the upload stage so the
+  // "X seconds since last shard" indicator advances. This is purely
+  // cosmetic — the actual upload state is updated via SDK callbacks.
+  useEffect(() => {
+    if (stage !== 'uploading') return
+    const handle = setInterval(() => setUploadTick((t) => t + 1), 1000)
+    return () => clearInterval(handle)
+  }, [stage])
 
   const busy = stage !== 'idle' && stage !== 'error' && stage !== 'done'
 
@@ -80,6 +99,12 @@ export function Upload() {
   async function handleSubmit() {
     if (!sdk || !file || !title.trim()) return
     setError(null)
+    // Reset progress state from any previous attempt.
+    setProgressBytes(0)
+    setStageFraction(0)
+    setShardsDone(0)
+    setShardsTotal(0)
+    setLastShardAt(null)
 
     // Each major step is wrapped in `step(name, fn)` so the next time
     // a WASM-level error like "index out of bounds" bubbles up, we know
@@ -138,6 +163,17 @@ export function Upload() {
       )
       console.log('[upload] totalEncoded:', totalEncoded, 'sourceSize:', sourceSize)
 
+      // Each shard is exactly SECTOR_SIZE (4 MiB). Total shard count is
+      // totalEncoded / 4 MiB. Used purely for "shard X of Y" UI; the
+      // actual progress denominator stays in bytes.
+      const totalShardCount = Math.max(
+        1,
+        Math.round(Number(totalEncoded) / (4 * 1024 * 1024)),
+      )
+      setShardsTotal(totalShardCount)
+      setShardsDone(0)
+      setLastShardAt(Date.now())
+
       const obj = await step('sdk.upload', () =>
         sdk.upload(new PinnedObject(), prepared.fmp4.stream(), {
           dataShards: DATA_SHARDS,
@@ -146,6 +182,8 @@ export function Upload() {
             setProgressBytes((prev) =>
               Math.min(sourceSize, prev + (p.shardSize / Number(totalEncoded)) * sourceSize),
             )
+            setShardsDone((n) => n + 1)
+            setLastShardAt(Date.now())
           },
         }),
       )
@@ -362,6 +400,36 @@ export function Upload() {
               style={{ width: `${barWidth(stage, stageFraction, progressBytes, file?.size ?? 1)}%` }}
             />
           </div>
+          {/*
+            Shard counter + idle indicator. The Sia SDK uploads one
+            4 MiB shard at a time; on a slow connection a single shard
+            can take 10+ seconds during which the byte counter looks
+            frozen. Showing "shard 7 of 30 · 12s since last update"
+            tells the user there's something happening, even when
+            the bar is between updates. After 30s of silence we add
+            a soft reassurance that the upload is still running.
+          */}
+          {stage === 'uploading' && shardsTotal > 0 && (
+            <div className="flex justify-between text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums">
+              <span>
+                Shard {shardsDone} of {shardsTotal}
+              </span>
+              {lastShardAt !== null && shardsDone < shardsTotal && (
+                <span>
+                  {(() => {
+                    const idleSec = Math.floor((Date.now() - lastShardAt) / 1000)
+                    if (idleSec >= 30) {
+                      return `still working (${idleSec}s since last shard)`
+                    }
+                    if (idleSec >= 3) {
+                      return `${idleSec}s since last shard`
+                    }
+                    return ''
+                  })()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -373,6 +441,11 @@ export function Upload() {
       >
         {busy ? stageLabel(stage) : 'Upload to Sia'}
       </button>
+      {!sdk && !busy && (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center">
+          Verifying your session with the indexer… you can fill out the form while you wait.
+        </p>
+      )}
     </div>
   )
 }
