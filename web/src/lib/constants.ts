@@ -34,9 +34,12 @@ export const APP_META: AppMetadata = {
   name: APP_NAME,
   description: 'Video catalog backed by Sia',
   serviceUrl: WEB_PUBLIC_ORIGIN,
-  // Static SVG served from web/public/logo.svg — see Vite's public dir.
-  // sia.storage fetches this when rendering the approval page.
-  logoUrl: `${WEB_PUBLIC_ORIGIN}/logo.svg`,
+  // Static PNG served from web/public/logo.png — sia.storage fetches
+  // this when rendering the approval page. PNG (not SVG) because some
+  // indexers reject SVG on security grounds (SVG can carry executable
+  // content). The favicon stays SVG since it's served same-origin to
+  // our own page where that's not a concern.
+  logoUrl: `${WEB_PUBLIC_ORIGIN}/logo.png`,
   callbackUrl: undefined,
 }
 
