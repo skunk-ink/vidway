@@ -7,11 +7,17 @@ import { ConnectScreen } from './ConnectScreen'
 import { LoadingScreen } from './LoadingScreen'
 import { RecoveryScreen } from './RecoveryScreen'
 
-// Maximum time to wait for `initSia()` + `builder.connected()` to settle
-// before showing the user an escape hatch. The indexer call inside
-// `connected()` has no built-in timeout, so a slow or unreachable
-// indexer would otherwise hang the loading screen forever.
-const INIT_TIMEOUT_MS = 15_000
+// WASM init has a different failure mode than the indexer call. The
+// SDK's `initSia()` caches its promise internally — if the very first
+// call rejects (or hangs and we time it out), every subsequent call
+// returns the same poisoned promise. That means retrying via the same
+// JS module instance is hopeless. The only real fix is a hard page
+// reload, which gives us a fresh module and a fresh `initPromise = null`.
+const WASM_INIT_TIMEOUT_MS = 15_000
+
+// The indexer call (builder.connected) is retryable in-place because
+// each call makes a new HTTP request — no internal caching.
+const INDEXER_TIMEOUT_MS = 15_000
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -29,33 +35,68 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
+// Track WASM init outside React state so it survives re-renders and
+// so we can distinguish "first attempt hung" from "we got past WASM
+// init but the indexer is slow." Once this resolves successfully, we
+// never re-attempt — WASM is initialized for the lifetime of the page.
+let wasmReady: Promise<void> | null = null
+function ensureWasmReady(): Promise<void> {
+  if (!wasmReady) {
+    wasmReady = withTimeout(initSia(), WASM_INIT_TIMEOUT_MS, 'WASM init').catch(
+      (e) => {
+        // The SDK's internal `initPromise` is now poisoned. Clearing
+        // our local cache wouldn't help because the next initSia()
+        // call returns the same rejected promise. Surface this so
+        // the UI can offer a hard reload.
+        wasmReady = null // allow caller to retry, but it won't fix the SDK cache
+        throw e
+      },
+    )
+  }
+  return wasmReady
+}
+
 export function AuthFlow() {
   const step = useAuthStore((s) => s.step)
   const error = useAuthStore((s) => s.error)
   const setError = useAuthStore((s) => s.setError)
   const builderRef = useRef<Builder | null>(null)
 
-  // `nonce` lets the user trigger a retry by clicking the button on the
-  // loading screen. Bumping it re-runs the init effect from scratch.
+  // `retryNonce` triggers an in-place retry of the indexer call. WASM
+  // init failures don't use this — they require a full reload.
   const [retryNonce, setRetryNonce] = useState(0)
+  // `wasmFailed` flips on if the WASM module failed to initialize.
+  // The retry button changes from "Retry" to "Reload" since in-place
+  // retries don't help.
+  const [wasmFailed, setWasmFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
 
     async function init() {
       const { storedKeyHex, setSdk, setStep } = useAuthStore.getState()
-      try {
-        await withTimeout(initSia(), INIT_TIMEOUT_MS, 'WASM init')
 
+      // Phase 1: WASM init. If this fails, only a hard reload helps.
+      try {
+        await ensureWasmReady()
+      } catch (e) {
+        if (cancelled) return
+        console.error('WASM init failed:', e)
+        setWasmFailed(true)
+        setError(
+          "Vidway couldn't load. This usually fixes itself with a refresh — sometimes the page assets get out of sync.",
+        )
+        return // stay on 'loading' with the Reload button
+      }
+
+      // Phase 2: Indexer reconnect (only if we have a stored key).
+      try {
         if (storedKeyHex) {
           const appKey = new AppKey(Uint8Array.fromHex(storedKeyHex))
           const builder = new Builder(INDEXER_URL, APP_META)
-          // Wrap the indexer call in a timeout. If sia.storage is slow
-          // or down, the user gets bumped to the connect screen with a
-          // visible error rather than an indefinite spinner.
           const sdk = await withTimeout(
             builder.connected(appKey),
-            INIT_TIMEOUT_MS,
+            INDEXER_TIMEOUT_MS,
             'reconnect with stored App Key',
           )
 
@@ -64,35 +105,23 @@ export function AuthFlow() {
             setSdk(sdk)
             return
           }
-          // connected() returned null — the indexer doesn't recognize
-          // this App Key anymore. Surface that explicitly so the user
-          // knows why they're being asked to re-approve, instead of
-          // silently dropping back to the connect screen.
+          // connected() returned null — indexer doesn't recognize the key.
           setError(
             "We couldn't reconnect using your stored App Key — the indexer didn't recognize it. You may need to approve again.",
           )
         }
 
-        if (!cancelled) {
-          setStep('connect')
-        }
+        if (!cancelled) setStep('connect')
       } catch (e) {
         if (cancelled) return
-        console.error('Init error:', e)
-        // Don't auto-fall-through to 'connect' on a timeout/network
-        // error — a slow indexer can recover on retry, and bouncing
-        // the user to the recovery-phrase screen on a transient
-        // failure is a terrible experience. Stay on 'loading' but
-        // mark the error so the LoadingScreen can show a Retry CTA.
+        console.error('Indexer init error:', e)
         const message = e instanceof Error ? e.message : String(e)
         if (/timed out|fetch|network/i.test(message)) {
-          setError(
-            "We couldn't reach the indexer. Check your connection and try again.",
-          )
-          // Stay on 'loading' so the user sees the retry button.
+          setError("We couldn't reach the indexer. Check your connection and try again.")
+          // Stay on 'loading' — user can hit Retry.
           return
         }
-        // Anything else (bad stored key, etc) → connect screen.
+        // Anything else (corrupt stored key, etc) → connect screen.
         setError(`Initialization failed: ${message}`)
         setStep('connect')
       }
@@ -121,12 +150,18 @@ export function AuthFlow() {
 
       {step === 'loading' && (
         <LoadingScreen
-          // If we have an error AND we're still on 'loading', it means
-          // the timeout path was hit. Show the retry CTA.
-          retry={error ? () => {
-            setError(null)
-            setRetryNonce((n) => n + 1)
-          } : undefined}
+          retry={
+            wasmFailed
+              ? // Hard reload: only way past a poisoned WASM init promise.
+                () => window.location.reload()
+              : error
+                ? () => {
+                    setError(null)
+                    setRetryNonce((n) => n + 1)
+                  }
+                : undefined
+          }
+          retryLabel={wasmFailed ? 'Reload page' : 'Retry'}
         />
       )}
       {step === 'connect' && <ConnectScreen builder={builderRef} />}
