@@ -6,6 +6,9 @@
 
 Vidway is a video sharing and streaming platform backed by Sia. Uploaders publish to their own indexer account and decide how long each share URL stays live. Viewers stream playback directly from Sia hosts to their browser — Vidway never touches the bytes, just the catalog. ***Your videos. Your storage. Your control.***
 
+> [!TIP]
+> **Try it now:** [vidway.skunk.ink](https://vidway.skunk.ink) — sign in with a Sia account and upload a video.
+
 ## Demo
 
 https://github.com/user-attachments/assets/c7e0d963-7033-4ac5-96ca-e073474881b8
