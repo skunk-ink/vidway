@@ -4,7 +4,7 @@
   <img src="docs/banner.png" alt="Share videos your way with Vidway" width="600">
 </p>
 
-Vidway is a video catalog. Users publish videos to Sia from their own indexer account, generate a time-limited share URL, and submit that URL plus a title, description, and thumbnail to Vidway. Anyone with a Sia account can browse the catalog and watch videos — playback streams directly from Sia hosts to the viewer's browser. Vidway's backend never touches the video bytes; it only stores the catalog row.
+Vidway is a video sharing and streaming platform backed by Sia. Uploaders publish to their own indexer account and decide how long each share URL stays live. Viewers stream playback directly from Sia hosts to their browser — Vidway never touches the bytes, just the catalog. ***Your videos. Your storage. Your control.***
 
 ## Repo layout
 
