@@ -69,3 +69,16 @@ CREATE TABLE IF NOT EXISTS flags (
 );
 CREATE INDEX IF NOT EXISTS flags_listing ON flags(listing_id);
 CREATE INDEX IF NOT EXISTS flags_created ON flags(created_at DESC);
+
+-- User profiles (Phase 4). Pubkey-keyed since that's how identity is
+-- already established; username is a unique handle for display and
+-- profile URLs. Stored case-insensitive (COLLATE NOCASE) so lookups
+-- match regardless of case while preserving however the user typed it.
+-- Optional — listings.uploader_pubkey works without a matching row here.
+CREATE TABLE IF NOT EXISTS users (
+  pubkey      TEXT PRIMARY KEY,                    -- "ed25519:..." string
+  username    TEXT NOT NULL UNIQUE COLLATE NOCASE, -- 3-20 chars, [a-z0-9_-], starts with letter
+  created_at  INTEGER NOT NULL,                    -- unix seconds
+  updated_at  INTEGER NOT NULL                     -- unix seconds
+);
+CREATE INDEX IF NOT EXISTS users_username ON users(username COLLATE NOCASE);

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ExpiryBadge } from '../components/ExpiryBadge'
 import { FlagModal } from '../components/FlagModal'
+import { UploaderName } from '../components/UploaderName'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { type Listing, api } from '../lib/api'
 import { formatDuration } from '../lib/format'
@@ -116,8 +117,11 @@ export function Watch() {
           </button>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
-          <span className="font-mono text-xs" title={listing.uploaderPubkey}>
-            {listing.uploaderPubkey.slice(0, 16)}…
+          <span className="text-xs">
+            <UploaderName
+              pubkey={listing.uploaderPubkey}
+              username={listing.uploaderUsername}
+            />
           </span>
           <span>·</span>
           <span>{formatDuration(listing.durationSec)}</span>

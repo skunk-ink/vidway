@@ -5,7 +5,9 @@ import { Navbar } from './components/Navbar'
 import { Toasts } from './components/Toast'
 import { Browse } from './routes/Browse'
 import { MyListings } from './routes/MyListings'
+import { Profile } from './routes/Profile'
 import { Upload } from './routes/Upload'
+import { UserProfileRoute } from './routes/UserProfileRoute'
 import { Watch } from './routes/Watch'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
@@ -40,6 +42,8 @@ export default function App() {
             <Route path="/v/:id" element={<Watch />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/mine" element={<MyListings />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/u/:username" element={<UserProfileRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         ) : (
