@@ -82,3 +82,18 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at  INTEGER NOT NULL                     -- unix seconds
 );
 CREATE INDEX IF NOT EXISTS users_username ON users(username COLLATE NOCASE);
+
+-- Hashtags extracted from listing descriptions (Phase 5). Tags are
+-- always stored lowercase, without the leading '#'. Multiple rows per
+-- listing (one per unique tag); the primary key prevents duplicates
+-- if a description repeats the same tag.
+--
+-- Kept in sync by the listings route: extracted on INSERT, replaced
+-- on UPDATE when the description changes, cascade-deleted with the
+-- listing.
+CREATE TABLE IF NOT EXISTS listing_tags (
+  listing_id  TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  tag         TEXT NOT NULL,                       -- lowercase, no '#' prefix
+  PRIMARY KEY (listing_id, tag)
+);
+CREATE INDEX IF NOT EXISTS listing_tags_tag ON listing_tags(tag);

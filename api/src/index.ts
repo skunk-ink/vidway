@@ -7,8 +7,10 @@ import { HTTPException } from 'hono/http-exception'
 import pino from 'pino'
 import { openDb } from './db.js'
 import { rateLimit } from './lib/rateLimit.js'
+import { extractTags } from './lib/tags.js'
 import { flagsRouter } from './routes/flags.js'
 import { listingsRouter } from './routes/listings.js'
+import { tagsRouter } from './routes/tags.js'
 import { usersRouter } from './routes/users.js'
 import { startExpiryProbe } from './workers/expiryProbe.js'
 
@@ -21,6 +23,31 @@ const DB_PATH = process.env.DATABASE_PATH ?? './data/vidway.db'
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173'
 
 const db = openDb(DB_PATH)
+
+// One-time backfill: if Phase 5 was deployed onto a database that
+// already has listings, the listing_tags table will be empty. Walk
+// the existing descriptions and populate tags. Cheap (descriptions
+// are short) and idempotent — only runs when listing_tags is empty.
+{
+  const tagCount = db.prepare('SELECT COUNT(*) AS n FROM listing_tags').get() as { n: number }
+  const listingCount = db.prepare('SELECT COUNT(*) AS n FROM listings').get() as { n: number }
+  if (tagCount.n === 0 && listingCount.n > 0) {
+    const rows = db.prepare('SELECT id, description FROM listings').all() as {
+      id: string
+      description: string
+    }[]
+    const insertTag = db.prepare(
+      'INSERT OR IGNORE INTO listing_tags (listing_id, tag) VALUES (?, ?)',
+    )
+    const backfill = db.transaction((entries: { id: string; description: string }[]) => {
+      for (const r of entries) {
+        for (const tag of extractTags(r.description)) insertTag.run(r.id, tag)
+      }
+    })
+    backfill(rows)
+    log.info({ listings: rows.length }, 'backfilled listing_tags from existing descriptions')
+  }
+}
 
 const app = new Hono()
 
@@ -72,6 +99,7 @@ app.route('/listings', listingsRouter(db))
 // with the listings router's own routes.
 app.route('/listings', flagsRouter(db))
 app.route('/users', usersRouter(db))
+app.route('/tags', tagsRouter(db))
 
 // Errors come through as JSON. We use HTTPException with a JSON-stringified
 // body in route handlers; this normalizes the response shape.

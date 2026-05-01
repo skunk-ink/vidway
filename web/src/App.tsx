@@ -4,8 +4,10 @@ import { AuthFlow } from './components/auth/AuthFlow'
 import { Navbar } from './components/Navbar'
 import { Toasts } from './components/Toast'
 import { Browse } from './routes/Browse'
+import { Categories } from './routes/Categories'
 import { MyListings } from './routes/MyListings'
 import { Profile } from './routes/Profile'
+import { TagRoute } from './routes/TagRoute'
 import { Upload } from './routes/Upload'
 import { UserProfileRoute } from './routes/UserProfileRoute'
 import { Watch } from './routes/Watch'
@@ -43,6 +45,8 @@ export default function App() {
             <Route path="/upload" element={<Upload />} />
             <Route path="/mine" element={<MyListings />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/categories" element={<Categories />} />
+            <Route path="/t/:tag" element={<TagRoute />} />
             <Route path="/u/:username" element={<UserProfileRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

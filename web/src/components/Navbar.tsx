@@ -66,6 +66,9 @@ export function Navbar() {
             <NavLink to="/" end className={navClass}>
               Browse
             </NavLink>
+            <NavLink to="/categories" className={navClass}>
+              Categories
+            </NavLink>
             <NavLink to="/upload" className={navClass}>
               Upload
             </NavLink>

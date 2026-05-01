@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { DB } from '../db.js'
 import { SignatureError, type SignedBody, verifySignedBody } from '../lib/verify.js'
 import { ShareUrlError, parseShareUrl } from '../lib/shareUrl.js'
+import { extractTags } from '../lib/tags.js'
 
 // Year 9999 unix seconds — the conventional "max DATETIME" sentinel.
 // The web UI's "Unlimited" expiry option encodes itself as exactly this
@@ -61,6 +62,7 @@ const ListQuery = z.object({
   sort: z.enum(['recent', 'expiring', 'longest', 'shortest']).default('recent'),
   uploader: z.string().optional(),
   status: z.enum(['alive', 'all']).default('alive'),
+  tag: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(24),
   cursor: z.string().optional(),
 })
@@ -138,7 +140,7 @@ export function listingsRouter(db: DB) {
   app.get('/', (c) => {
     const parsed = ListQuery.safeParse(Object.fromEntries(new URL(c.req.url).searchParams))
     if (!parsed.success) throw badRequest(parsed.error.message)
-    const { q, sort, uploader, status, limit, cursor } = parsed.data
+    const { q, sort, uploader, status, tag, limit, cursor } = parsed.data
 
     const where: string[] = []
     const params: (string | number)[] = []
@@ -151,6 +153,15 @@ export function listingsRouter(db: DB) {
     if (uploader) {
       where.push('uploader_pubkey = ?')
       params.push(uploader)
+    }
+
+    // Tag filter joins listing_tags. Each listing has at most one row
+    // per tag thanks to the PK, so no SELECT DISTINCT needed.
+    let tagJoin = ''
+    if (tag) {
+      tagJoin = 'JOIN listing_tags ON listing_tags.listing_id = listings.id'
+      where.push('listing_tags.tag = ?')
+      params.push(tag.toLowerCase())
     }
 
     let rowidJoin = ''
@@ -188,6 +199,7 @@ export function listingsRouter(db: DB) {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const sql = `
       ${LISTING_SELECT}
+      ${tagJoin}
       ${rowidJoin}
       ${whereSql}
       ORDER BY ${orderBy}
@@ -295,6 +307,17 @@ export function listingsRouter(db: DB) {
       now,
     )
 
+    // Extract hashtags from the description and store them. Quiet
+    // no-op if the description has no tags. INSERT OR IGNORE means
+    // duplicate tags within a single description don't error.
+    const tags = extractTags(p.description)
+    if (tags.length > 0) {
+      const insertTag = db.prepare(
+        'INSERT OR IGNORE INTO listing_tags (listing_id, tag) VALUES (?, ?)',
+      )
+      for (const t of tags) insertTag.run(id, t)
+    }
+
     return c.json({ id }, 201)
   })
 
@@ -374,6 +397,24 @@ export function listingsRouter(db: DB) {
     params.push(id)
 
     db.prepare(`UPDATE listings SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+
+    // If the description changed, replace the listing's tags. Wrapped
+    // in a transaction so we never end up with a partial set of tags
+    // on the listing.
+    if (body.payload.description !== undefined) {
+      const replaceTags = db.transaction((listingId: string, description: string) => {
+        db.prepare('DELETE FROM listing_tags WHERE listing_id = ?').run(listingId)
+        const tags = extractTags(description)
+        if (tags.length > 0) {
+          const insertTag = db.prepare(
+            'INSERT OR IGNORE INTO listing_tags (listing_id, tag) VALUES (?, ?)',
+          )
+          for (const t of tags) insertTag.run(listingId, t)
+        }
+      })
+      replaceTags(id, body.payload.description)
+    }
+
     const updated = db
       .prepare(`${LISTING_SELECT} WHERE listings.id = ?`)
       .get(id) as ListingRow
