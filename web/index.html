@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Preload the navbar wordmark so it's already in cache by the time
+      React mounts. Without this, the wordmark would only start
+      fetching after JS parsing, leaving a brief blank space in the
+      navbar's top-left corner on slow connections.
+    -->
+    <link rel="preload" as="image" href="/wordmark-384.webp" type="image/webp" fetchpriority="high" />
     <meta name="theme-color" content="#171717" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <title>Vidway</title>
