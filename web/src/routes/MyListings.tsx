@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExpiryBadge } from '../components/ExpiryBadge'
 import { ListingActions } from '../components/ListingActions'
@@ -8,13 +8,11 @@ import { useAuthStore } from '../stores/auth'
 
 export function MyListings() {
   const sdk = useAuthStore((s) => s.sdk)
-  const pubkey = useMemo(() => {
-    try {
-      return sdk?.appKey().publicKey() ?? null
-    } catch {
-      return null
-    }
-  }, [sdk])
+  // Pubkey is derived synchronously from the stored App Key hex —
+  // available as soon as WASM init finishes, no need to wait on the
+  // background indexer reconnect. That's what unblocks /mine from
+  // sitting on "Loading…" indefinitely when sia.storage is slow.
+  const pubkey = useAuthStore((s) => s.publicKey)
 
   const [listings, setListings] = useState<Listing[] | null>(null)
   const [error, setError] = useState<string | null>(null)

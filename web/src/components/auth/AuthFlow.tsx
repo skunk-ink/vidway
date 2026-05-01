@@ -65,7 +65,7 @@ export function AuthFlow() {
     let cancelled = false
 
     async function init() {
-      const { storedKeyHex, setSdk, setStep } = useAuthStore.getState()
+      const { storedKeyHex, setSdk, setStep, hydratePublicKey } = useAuthStore.getState()
 
       // ---- Phase 1: WASM init (must succeed before doing anything) ----
       try {
@@ -79,6 +79,13 @@ export function AuthFlow() {
         )
         return
       }
+
+      // Now that WASM is ready, derive the public key synchronously
+      // from storedKeyHex if we have one. This unblocks the navbar's
+      // identity badge and the /mine page from waiting on the indexer.
+      // It's a local cryptographic derivation (ed25519 pubkey from
+      // private key bytes), no network call.
+      hydratePublicKey()
 
       // ---- Phase 2: route ----
       //

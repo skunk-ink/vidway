@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { type UserProfile, type UsernameAvailability, api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
@@ -18,13 +18,12 @@ type CheckState =
 export function Profile() {
   const sdk = useAuthStore((s) => s.sdk)
   const addToast = useToastStore((s) => s.addToast)
-  const pubkey = useMemo(() => {
-    try {
-      return sdk?.appKey().publicKey() ?? null
-    } catch {
-      return null
-    }
-  }, [sdk])
+  // Same fix as Navbar / MyListings: read pubkey from the store, not
+  // from the SDK. The profile page can show a user's existing handle
+  // immediately on load instead of waiting for the indexer round-trip.
+  // Submission still requires `sdk` because setProfile is a signed
+  // write, and we gate the submit button on it being non-null.
+  const pubkey = useAuthStore((s) => s.publicKey)
 
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined)
   const [username, setUsername] = useState('')
