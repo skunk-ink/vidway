@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { type UserProfile, api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
@@ -7,17 +7,14 @@ import { ThemeToggle } from './ThemeToggle'
 
 export function Navbar() {
   const step = useAuthStore((s) => s.step)
-  const sdk = useAuthStore((s) => s.sdk)
+  // Read pubkey from the store directly. It's hydrated synchronously
+  // from storedKeyHex once WASM is ready — no dependency on the SDK
+  // being alive, so the navbar's identity / sign-out / theme cluster
+  // shows up immediately on connect-screen exit, even while the
+  // background indexer verification is still in flight (or has failed).
+  const publicKey = useAuthStore((s) => s.publicKey)
   const reset = useAuthStore((s) => s.reset)
   const isConnected = step === 'connected'
-
-  const publicKey = useMemo(() => {
-    try {
-      return sdk?.appKey().publicKey() ?? null
-    } catch {
-      return null
-    }
-  }, [sdk])
 
   // Fetch the user's own profile (if any) once after connect. We poll
   // the user's profile from /profile after edits via a custom event so

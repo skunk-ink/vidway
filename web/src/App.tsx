@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { AuthFlow } from './components/auth/AuthFlow'
 import { Navbar } from './components/Navbar'
@@ -16,20 +16,16 @@ import { useThemeStore } from './stores/theme'
 
 export default function App() {
   const step = useAuthStore((s) => s.step)
-  const sdk = useAuthStore((s) => s.sdk)
+  // Pubkey from the auth store — same source-of-truth the navbar uses.
+  // Doesn't depend on the SDK being alive, so theme hydration runs as
+  // soon as the user is identifiable, not when sia.storage responds.
+  const pubkey = useAuthStore((s) => s.publicKey)
   const hydrateTheme = useThemeStore((s) => s.hydrate)
 
   // Hydrate the theme preference from localStorage as soon as we know
   // the user's pubkey. Pre-auth we sit on system default; post-auth we
   // load whatever this user previously picked. Re-runs on sign out,
   // resetting to system default for the next user.
-  const pubkey = useMemo(() => {
-    try {
-      return sdk?.appKey().publicKey() ?? null
-    } catch {
-      return null
-    }
-  }, [sdk])
   useEffect(() => {
     hydrateTheme(pubkey)
   }, [pubkey, hydrateTheme])
