@@ -7,6 +7,7 @@ import { UploaderName } from '../components/UploaderName'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { type Listing, api } from '../lib/api'
 import { formatDuration } from '../lib/format'
+import { renderDescription } from '../lib/hashtags'
 import { useAuthStore } from '../stores/auth'
 
 export function Watch() {
@@ -135,7 +136,7 @@ export function Watch() {
 
       {listing.description && (
         <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap leading-relaxed">
-          {listing.description}
+          {renderDescription(listing.description)}
         </p>
       )}
 

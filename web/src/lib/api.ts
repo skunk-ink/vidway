@@ -37,6 +37,23 @@ export type UsernameAvailability = {
   reason?: string
 }
 
+export type Tag = {
+  /** Lowercase, no '#' prefix. */
+  tag: string
+  /** Number of (alive) listings using this tag. */
+  count: number
+}
+
+export type ListTagsParams = {
+  /**
+   * Optional case-insensitive prefix match. A leading '#' is stripped
+   * server-side, but we strip here too so the API surface is friendly.
+   */
+  q?: string
+  sort?: 'count' | 'alpha'
+  limit?: number
+}
+
 export type ListListingsResult = {
   items: Listing[]
   nextCursor: string | null
@@ -47,6 +64,8 @@ export type ListListingsParams = {
   sort?: 'recent' | 'expiring' | 'longest' | 'shortest'
   uploader?: string
   status?: 'alive' | 'all'
+  /** Filter to listings tagged with this hashtag (lowercase, no '#'). */
+  tag?: string
   limit?: number
   cursor?: string
 }
@@ -191,6 +210,22 @@ export const api = {
   async checkUsername(username: string): Promise<UsernameAvailability> {
     const q = new URLSearchParams({ username })
     return request<UsernameAvailability>(`/users/check?${q.toString()}`)
+  },
+
+  // ---- Hashtags ----
+
+  /**
+   * List or search hashtags. Used by both the categories listing
+   * (sort: 'alpha') and the autocomplete dropdown (sort: 'count').
+   * The frontend strips a leading '#' from `q` if present.
+   */
+  async listTags(params: ListTagsParams = {}): Promise<{ items: Tag[] }> {
+    const q = new URLSearchParams()
+    if (params.q !== undefined) q.set('q', params.q.replace(/^#/, ''))
+    if (params.sort) q.set('sort', params.sort)
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    const qs = q.toString()
+    return request<{ items: Tag[] }>(`/tags${qs ? `?${qs}` : ''}`)
   },
 }
 
