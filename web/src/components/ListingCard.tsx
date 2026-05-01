@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Listing } from '../lib/api'
 import { formatDuration } from '../lib/format'
 import { ExpiryBadge } from './ExpiryBadge'
+import { UploaderName } from './UploaderName'
 
 export function ListingCard({ listing }: { listing: Listing }) {
   const thumbSrc = `data:${listing.thumbnailMime};base64,${listing.thumbnailB64}`
@@ -27,9 +28,14 @@ export function ListingCard({ listing }: { listing: Listing }) {
           {listing.title}
         </h3>
         <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-          <span className="font-mono truncate" title={listing.uploaderPubkey}>
-            {listing.uploaderPubkey.slice(8, 16)}…
-          </span>
+          {/* linked=false because the whole card is already a Link to the
+              listing — nesting <a> inside <a> is invalid HTML. */}
+          <UploaderName
+            pubkey={listing.uploaderPubkey}
+            username={listing.uploaderUsername}
+            linked={false}
+            className="truncate"
+          />
           <span>·</span>
           <ExpiryBadge validUntil={listing.validUntil} status={listing.probeStatus} />
         </div>

@@ -83,7 +83,17 @@ type ListingRow = {
   updated_at: number
   probe_status: 'alive' | 'dead' | 'unknown'
   probed_at: number | null
+  // Joined from users table. NULL when the uploader has no profile.
+  uploader_username: string | null
 }
+
+// Standard projection for listing reads. LEFT JOIN means rows without a
+// matching users entry still come back, with uploader_username = NULL.
+const LISTING_SELECT = `
+  SELECT listings.*, users.username AS uploader_username
+  FROM listings
+  LEFT JOIN users ON users.pubkey = listings.uploader_pubkey
+`
 
 function rowToJson(row: ListingRow) {
   return {
@@ -97,6 +107,7 @@ function rowToJson(row: ListingRow) {
     thumbnailB64: row.thumbnail.toString('base64'),
     thumbnailMime: row.thumbnail_mime,
     uploaderPubkey: row.uploader_pubkey,
+    uploaderUsername: row.uploader_username,
     validUntil: new Date(row.valid_until * 1000).toISOString(),
     createdAt: new Date(row.created_at * 1000).toISOString(),
     updatedAt: new Date(row.updated_at * 1000).toISOString(),
@@ -176,7 +187,7 @@ export function listingsRouter(db: DB) {
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const sql = `
-      SELECT listings.* FROM listings
+      ${LISTING_SELECT}
       ${rowidJoin}
       ${whereSql}
       ORDER BY ${orderBy}
@@ -203,7 +214,9 @@ export function listingsRouter(db: DB) {
   // GET /listings/:id
   app.get('/:id', (c) => {
     const id = c.req.param('id')
-    const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(id) as ListingRow | undefined
+    const row = db
+      .prepare(`${LISTING_SELECT} WHERE listings.id = ?`)
+      .get(id) as ListingRow | undefined
     if (!row) throw notFound()
     return c.json(rowToJson(row))
   })
@@ -361,7 +374,9 @@ export function listingsRouter(db: DB) {
     params.push(id)
 
     db.prepare(`UPDATE listings SET ${sets.join(', ')} WHERE id = ?`).run(...params)
-    const updated = db.prepare('SELECT * FROM listings WHERE id = ?').get(id) as ListingRow
+    const updated = db
+      .prepare(`${LISTING_SELECT} WHERE listings.id = ?`)
+      .get(id) as ListingRow
     return c.json(rowToJson(updated))
   })
 

@@ -9,6 +9,7 @@ import { openDb } from './db.js'
 import { rateLimit } from './lib/rateLimit.js'
 import { flagsRouter } from './routes/flags.js'
 import { listingsRouter } from './routes/listings.js'
+import { usersRouter } from './routes/users.js'
 import { startExpiryProbe } from './workers/expiryProbe.js'
 
 const log = pino({
@@ -37,21 +38,40 @@ app.use(
 
 app.get('/healthz', (c) => c.json({ ok: true }))
 
-// Rate-limit listing creation: 20/hour per IP. Doesn't apply to GET/PATCH/DELETE
+// Rate limit POST /listings: 20/hour per IP. Doesn't apply to GET/PATCH/DELETE
 // since those are signed and have their own anti-replay protection (nonces).
-app.use(
-  '/listings',
-  async (c, next) => {
-    if (c.req.method !== 'POST') return next()
-    return rateLimit({ refillPerSecond: 20 / 3600, capacity: 20, scope: 'create' })(c, next)
-  },
-)
+//
+// IMPORTANT: hoist rateLimit() out of the handler so the bucket map is
+// shared across requests. Calling it inside the handler would re-create
+// a fresh map every time and never actually rate limit anything.
+const createListingRateLimit = rateLimit({
+  refillPerSecond: 20 / 3600,
+  capacity: 20,
+  scope: 'create',
+})
+app.use('/listings', async (c, next) => {
+  if (c.req.method !== 'POST') return next()
+  return createListingRateLimit(c, next)
+})
+
+// Rate limit POST /users: 5/hour per IP. Profile changes shouldn't
+// happen often; this is mainly to make squatting on names tedious.
+const setProfileRateLimit = rateLimit({
+  refillPerSecond: 5 / 3600,
+  capacity: 5,
+  scope: 'set-profile',
+})
+app.use('/users', async (c, next) => {
+  if (c.req.method !== 'POST') return next()
+  return setProfileRateLimit(c, next)
+})
 
 app.route('/listings', listingsRouter(db))
 // Flags are under /listings/:id/flag — mounted as a sibling router so the
 // rate limit is applied per-route inside flagsRouter and doesn't collide
 // with the listings router's own routes.
 app.route('/listings', flagsRouter(db))
+app.route('/users', usersRouter(db))
 
 // Errors come through as JSON. We use HTTPException with a JSON-stringified
 // body in route handlers; this normalizes the response shape.

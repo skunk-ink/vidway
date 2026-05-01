@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { type UserProfile, api } from '../lib/api'
 import { APP_NAME } from '../lib/constants'
 import { useAuthStore } from '../stores/auth'
 import { CopyButton } from './CopyButton'
@@ -19,6 +20,33 @@ export function Navbar() {
       return null
     }
   }, [sdk])
+
+  // Fetch the user's own profile (if any) once after connect. We poll
+  // the user's profile from /profile after edits via a custom event so
+  // the navbar updates without a full reload.
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  useEffect(() => {
+    if (!publicKey) {
+      setProfile(null)
+      return
+    }
+    let cancelled = false
+    api.getProfileByPubkey(publicKey).then((p) => {
+      if (!cancelled) setProfile(p)
+    })
+
+    // Listen for profile updates from the Profile route. Sent with
+    // `window.dispatchEvent(new CustomEvent('vidway:profile-updated', {detail}))`.
+    function onUpdate(e: Event) {
+      const detail = (e as CustomEvent<UserProfile | null>).detail
+      setProfile(detail)
+    }
+    window.addEventListener('vidway:profile-updated', onUpdate)
+    return () => {
+      cancelled = true
+      window.removeEventListener('vidway:profile-updated', onUpdate)
+    }
+  }, [publicKey])
 
   function handleSignOut() {
     reset()
@@ -53,9 +81,31 @@ export function Navbar() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-600" />
             </span>
-            <span className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400" title={publicKey}>
-              {publicKey.slice(0, 8)}…{publicKey.slice(-6)}
-            </span>
+            {/*
+              Identity badge: @username if claimed (linked to own profile
+              edit page), else truncated pubkey + "Set username" CTA.
+            */}
+            {profile ? (
+              <Link
+                to="/profile"
+                className="text-xs text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                title={publicKey}
+              >
+                @{profile.username}
+              </Link>
+            ) : (
+              <>
+                <span className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400" title={publicKey}>
+                  {publicKey.slice(0, 8)}…{publicKey.slice(-6)}
+                </span>
+                <Link
+                  to="/profile"
+                  className="text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors underline-offset-2 hover:underline"
+                >
+                  Set username
+                </Link>
+              </>
+            )}
             <CopyButton value={publicKey} label="Public key copied" />
             <ThemeToggle />
             <button
