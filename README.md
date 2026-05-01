@@ -11,7 +11,7 @@ Vidway is a video sharing and streaming platform backed by Sia. Uploaders publis
 https://github.com/user-attachments/assets/c7e0d963-7033-4ac5-96ca-e073474881b8
 
 > [!TIP]
-> **Try it now:** [vidway.skunk.ink](https://vidway.ca) — sign in with a Sia account and upload a video.
+> **Try it now:** [vidway.ca](https://vidway.ca) — sign in with a Sia account and upload a video.
 
 ## Repo layout
 
