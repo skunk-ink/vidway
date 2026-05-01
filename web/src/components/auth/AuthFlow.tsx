@@ -13,11 +13,13 @@ import { RecoveryScreen } from './RecoveryScreen'
 // returns the same poisoned promise. That means retrying via the same
 // JS module instance is hopeless. The only real fix is a hard page
 // reload, which gives us a fresh module and a fresh `initPromise = null`.
-const WASM_INIT_TIMEOUT_MS = 15_000
+const WASM_INIT_TIMEOUT_MS = 30_000
 
-// The indexer call (builder.connected) is retryable in-place because
-// each call makes a new HTTP request — no internal caching.
-const INDEXER_TIMEOUT_MS = 15_000
+// Indexer reconnect has its own timeout. Bumped to 30s because
+// sia.storage is sometimes legitimately slow on cold cache. Short
+// timeouts here cause the optimistic-render path to fall back to the
+// "session unverified" banner unnecessarily often.
+const INDEXER_TIMEOUT_MS = 30_000
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -35,20 +37,15 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
-// Track WASM init outside React state so it survives re-renders and
-// so we can distinguish "first attempt hung" from "we got past WASM
-// init but the indexer is slow." Once this resolves successfully, we
-// never re-attempt — WASM is initialized for the lifetime of the page.
+// Track WASM init outside React state so it survives re-renders. Once
+// this resolves successfully, we never re-attempt — WASM is initialized
+// for the lifetime of the page.
 let wasmReady: Promise<void> | null = null
 function ensureWasmReady(): Promise<void> {
   if (!wasmReady) {
     wasmReady = withTimeout(initSia(), WASM_INIT_TIMEOUT_MS, 'WASM init').catch(
       (e) => {
-        // The SDK's internal `initPromise` is now poisoned. Clearing
-        // our local cache wouldn't help because the next initSia()
-        // call returns the same rejected promise. Surface this so
-        // the UI can offer a hard reload.
-        wasmReady = null // allow caller to retry, but it won't fix the SDK cache
+        wasmReady = null
         throw e
       },
     )
@@ -61,13 +58,7 @@ export function AuthFlow() {
   const error = useAuthStore((s) => s.error)
   const setError = useAuthStore((s) => s.setError)
   const builderRef = useRef<Builder | null>(null)
-
-  // `retryNonce` triggers an in-place retry of the indexer call. WASM
-  // init failures don't use this — they require a full reload.
   const [retryNonce, setRetryNonce] = useState(0)
-  // `wasmFailed` flips on if the WASM module failed to initialize.
-  // The retry button changes from "Retry" to "Reload" since in-place
-  // retries don't help.
   const [wasmFailed, setWasmFailed] = useState(false)
 
   useEffect(() => {
@@ -76,7 +67,7 @@ export function AuthFlow() {
     async function init() {
       const { storedKeyHex, setSdk, setStep } = useAuthStore.getState()
 
-      // Phase 1: WASM init. If this fails, only a hard reload helps.
+      // ---- Phase 1: WASM init (must succeed before doing anything) ----
       try {
         await ensureWasmReady()
       } catch (e) {
@@ -86,44 +77,73 @@ export function AuthFlow() {
         setError(
           "Vidway couldn't load. This usually fixes itself with a refresh — sometimes the page assets get out of sync.",
         )
-        return // stay on 'loading' with the Reload button
+        return
       }
 
-      // Phase 2: Indexer reconnect (only if we have a stored key).
-      try {
-        if (storedKeyHex) {
-          const appKey = new AppKey(Uint8Array.fromHex(storedKeyHex))
-          const builder = new Builder(INDEXER_URL, APP_META)
-          const sdk = await withTimeout(
-            builder.connected(appKey),
-            INDEXER_TIMEOUT_MS,
-            'reconnect with stored App Key',
-          )
+      // ---- Phase 2: route ----
+      //
+      // No stored key → user has never connected, send them to the
+      // connect flow.
+      if (!storedKeyHex) {
+        if (!cancelled) setStep('connect')
+        return
+      }
 
-          if (cancelled) return
-          if (sdk) {
-            setSdk(sdk)
-            return
-          }
-          // connected() returned null — indexer doesn't recognize the key.
+      // We have a stored App Key. Trust it optimistically and unblock
+      // the UI immediately. The actual `builder.connected()` call
+      // happens in the background — if it succeeds we attach the SDK,
+      // if it fails we surface a non-blocking banner.
+      //
+      // Why optimistic: `connected()` is an HTTP call to sia.storage's
+      // /auth/check endpoint. It blocks every page load on a third
+      // party's responsiveness — when sia.storage is slow, every fresh
+      // tab looks broken. Routes that don't actually need an SDK
+      // (Browse, Categories, /t/:tag, /u/:username) work fine without
+      // one. Routes that DO need one (Upload, MyListings) gate their
+      // action buttons on sdk being non-null and show a "verifying
+      // session…" hint until it arrives.
+      if (!cancelled) setStep('connected')
+
+      try {
+        const appKey = new AppKey(Uint8Array.fromHex(storedKeyHex))
+        const builder = new Builder(INDEXER_URL, APP_META)
+        const sdk = await withTimeout(
+          builder.connected(appKey),
+          INDEXER_TIMEOUT_MS,
+          'reconnect with stored App Key',
+        )
+        if (cancelled) return
+
+        if (sdk) {
+          setSdk(sdk)
+          // setSdk also bumps step to 'connected' — already there but
+          // harmless. Clear any session-unverified banner left over.
+          setError(null)
+        } else {
+          // Indexer doesn't recognize the key. The user can keep
+          // browsing, but anything that needs to upload/pin/refresh
+          // will fail. Surface a non-blocking banner with re-approve.
           setError(
-            "We couldn't reconnect using your stored App Key — the indexer didn't recognize it. You may need to approve again.",
+            "Your session couldn't be verified — some features may not work until you reconnect. Sign out and back in to fix.",
           )
         }
-
-        if (!cancelled) setStep('connect')
       } catch (e) {
         if (cancelled) return
-        console.error('Indexer init error:', e)
+        console.error('Background indexer verification failed:', e)
         const message = e instanceof Error ? e.message : String(e)
+        // Distinguish transient network errors from "indexer rejected
+        // your key." Network errors → silent retry on next bootstrap;
+        // explicit rejection → tell the user to re-approve. Without
+        // distinguishing we'd nag everyone every time sia.storage is
+        // slow.
         if (/timed out|fetch|network/i.test(message)) {
-          setError("We couldn't reach the indexer. Check your connection and try again.")
-          // Stay on 'loading' — user can hit Retry.
-          return
+          // Don't show an error banner for transient failures — the
+          // user can use most of the app fine, and the next page load
+          // will retry. Just log it for debugging.
+          console.warn('Indexer unreachable; running without SDK until next bootstrap.')
+        } else {
+          setError(`Couldn't verify your session: ${message}`)
         }
-        // Anything else (corrupt stored key, etc) → connect screen.
-        setError(`Initialization failed: ${message}`)
-        setStep('connect')
       }
     }
 
@@ -152,8 +172,7 @@ export function AuthFlow() {
         <LoadingScreen
           retry={
             wasmFailed
-              ? // Hard reload: only way past a poisoned WASM init promise.
-                () => window.location.reload()
+              ? () => window.location.reload()
               : error
                 ? () => {
                     setError(null)

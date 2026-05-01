@@ -441,6 +441,11 @@ export function Upload() {
       >
         {busy ? stageLabel(stage) : 'Upload to Sia'}
       </button>
+      {!sdk && !busy && (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center">
+          Verifying your session with the indexer… you can fill out the form while you wait.
+        </p>
+      )}
     </div>
   )
 }
