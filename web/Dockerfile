@@ -25,6 +25,13 @@ WORKDIR /app
 ARG VITE_VIDWAY_API_URL=http://localhost:8787
 ENV VITE_VIDWAY_API_URL=$VITE_VIDWAY_API_URL
 
+# The public URL the web app is served from. Baked into the bundle so
+# constants.ts can derive serviceUrl/logoUrl for the indexer approval
+# page from a real, fetchable URL. Defaults to the host-exposed web
+# port for local dev.
+ARG VITE_WEB_PUBLIC_ORIGIN=http://localhost:8080
+ENV VITE_WEB_PUBLIC_ORIGIN=$VITE_WEB_PUBLIC_ORIGIN
+
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Workspace manifests first for caching. Same reason as the api Dockerfile.

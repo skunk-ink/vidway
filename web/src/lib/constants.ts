@@ -13,12 +13,30 @@ export const APP_NAME = 'Vidway'
 // No editable input on the connect screen.
 export const INDEXER_URL = 'https://sia.storage'
 
+// The public URL the web app is served from. Used to construct the
+// service URL and logo URL that show up on the indexer's approval page.
+//
+// Resolved in this order:
+//   1. VITE_WEB_PUBLIC_ORIGIN  — explicit override (preferred)
+//   2. VITE_VIDWAY_API_URL     — fallback for localhost dev where the
+//                                 web origin isn't separately defined
+//   3. window.location.origin  — last-ditch runtime fallback
+//
+// At build time inside Docker we set VITE_WEB_PUBLIC_ORIGIN from the
+// .env so the indexer page resolves a real, fetchable URL.
+const WEB_PUBLIC_ORIGIN =
+  (import.meta.env.VITE_WEB_PUBLIC_ORIGIN as string | undefined) ??
+  (import.meta.env.VITE_VIDWAY_API_URL as string | undefined) ??
+  (typeof window !== 'undefined' ? window.location.origin : 'https://vidway.example')
+
 export const APP_META: AppMetadata = {
   appId: APP_KEY,
   name: APP_NAME,
   description: 'Video catalog backed by Sia',
-  serviceUrl: 'https://vidway.example',
-  logoUrl: undefined,
+  serviceUrl: WEB_PUBLIC_ORIGIN,
+  // Static SVG served from web/public/logo.svg — see Vite's public dir.
+  // sia.storage fetches this when rendering the approval page.
+  logoUrl: `${WEB_PUBLIC_ORIGIN}/logo.svg`,
   callbackUrl: undefined,
 }
 

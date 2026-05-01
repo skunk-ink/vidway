@@ -54,6 +54,10 @@ services:
         # at build time. Must be the public URL the browser can hit,
         # NOT a docker-internal hostname.
         VITE_VIDWAY_API_URL: ${VITE_VIDWAY_API_URL:-http://localhost:8787}
+        # The public web origin. Baked into the bundle so the indexer
+        # approval page on sia.storage can fetch the logo and link to
+        # the service URL.
+        VITE_WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-http://localhost:8080}
     container_name: vidway-web
     ports:
       - "${WEB_PORT:-8080}:80"

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256">
+  <!--
+    Vidway brand mark for the sia.storage approval page.
+
+    Hardcoded to neutral-900 (#171717) on a transparent background.
+    The 64×64 viewBox has the 24×24 mark scaled and centered with
+    consistent padding so it looks balanced inside whatever rounded
+    container the indexer UI puts around it.
+
+    No <style>, no media queries, no external refs — sia.storage
+    fetches this and displays it as-is, so it has to be entirely
+    self-contained and render the same everywhere.
+  -->
+  <g transform="translate(8, 8) scale(2)" fill="none" stroke="#171717" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 4 5 L 1 5 L 1 19 L 4 19" />
+    <path d="M 20 5 L 23 5 L 23 19 L 20 19" />
+  </g>
+  <path d="M 26 24 L 38 32 L 26 40 Z" fill="#171717" />
+</svg>
